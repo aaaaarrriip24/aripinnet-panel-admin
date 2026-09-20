@@ -4,8 +4,11 @@ import { fileURLToPath, URL } from 'node:url';
 
 export default defineConfig({
   plugins: [vue()],
-  // base '/admin/' supaya bisa dilayani di sub-path bersama API di domain yang sama
-  base: '/admin/',
+  // Panel dilayani di subdomain sendiri (panel.aripinnet.my.id), jadi base '/'.
+  // Kalau nanti dipindah ke sub-path bersama API di satu domain, kembalikan
+  // ke '/admin/' DAN ubah juga argumen createWebHistory() di src/router/index.js —
+  // keduanya harus sama, kalau tidak halaman tampil kosong setelah refresh.
+  base: '/',
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
