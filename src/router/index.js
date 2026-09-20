@@ -48,4 +48,35 @@ router.beforeEach(async (to) => {
   return true;
 });
 
+/**
+ * Pulihkan diri saat chunk lama sudah tidak ada di server.
+ *
+ * Setelah deploy, nama file chunk berubah karena memuat hash isi. Tab yang
+ * sudah terbuka sejak sebelum deploy masih memegang nama lama. Server
+ * statis dengan fallback SPA membalas file yang hilang dengan index.html
+ * berstatus 200, bukan 404 — browser menolak menjalankan HTML sebagai
+ * modul, navigasi dibatalkan diam-diam, dan halaman terlihat macet tanpa
+ * pesan error.
+ *
+ * Panel sering dibuka berjam-jam di tab yang sama, jadi ini bukan kasus
+ * langka. Muat ulang sekali menyelesaikannya.
+ */
+router.onError((err) => {
+  const gagalMuatModul = /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i
+    .test(err?.message || '');
+
+  if (!gagalMuatModul) return;
+
+  try {
+    if (sessionStorage.getItem('reload-chunk')) return;
+    sessionStorage.setItem('reload-chunk', '1');
+  } catch (_) { /* mode privat — biarkan reload sekali */ }
+
+  window.location.reload();
+});
+
+router.afterEach(() => {
+  try { sessionStorage.removeItem('reload-chunk'); } catch (_) { /* abaikan */ }
+});
+
 export default router;
