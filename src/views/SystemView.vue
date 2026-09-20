@@ -106,14 +106,31 @@ function levelClass(l) {
   return { critical: 'badge-danger', warning: 'badge-warning', info: 'badge-ok' }[l] || 'badge-muted';
 }
 
-onMounted(() => {
-  load();
+/**
+ * Jadwal muat ulang menyesuaikan keadaan.
+ *
+ * QR WhatsApp berganti tiap ~20 detik. Dengan interval 30 detik, QR yang
+ * tampil di layar hampir selalu sudah mati sebelum sempat dipindai —
+ * admin akan mengira sistemnya rusak. Jadi selama QR tampil, muat ulang
+ * tiap 5 detik; di luar itu kembali ke 30 detik supaya tidak membebani
+ * server tanpa alasan.
+ */
+function jadwalkan() {
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(async () => {
+    await load();
+    jadwalkan();
+  }, wa.value?.qr ? 5_000 : 30_000);
+}
+
+onMounted(async () => {
   // Halaman ini biasanya dibuka justru saat sedang ada masalah —
   // perbarui sendiri supaya admin tidak menekan refresh terus.
-  refreshTimer = setInterval(load, 30_000);
+  await load();
+  jadwalkan();
 });
 
-onUnmounted(() => clearInterval(refreshTimer));
+onUnmounted(() => clearTimeout(refreshTimer));
 </script>
 
 <template>
@@ -153,6 +170,30 @@ onUnmounted(() => clearInterval(refreshTimer));
 
         <div v-if="wa.reason" class="alert" :class="wa.health === 'critical' ? 'alert-error' : 'alert-warning'" style="margin-top: 12px">
           {{ wa.reason }}
+        </div>
+
+        <!-- QR pairing. Hanya muncul saat worker sedang menunggu dipindai;
+             hilang sendiri begitu tersambung. -->
+        <div v-if="wa.qr" class="qr-box">
+          <img :src="wa.qr.png" alt="QR pairing WhatsApp" width="260" height="260" />
+          <div class="qr-help">
+            <h3>Tautkan nomor WhatsApp</h3>
+            <ol>
+              <li>Buka WhatsApp di HP nomor billing</li>
+              <li>Setelan → <strong>Perangkat tertaut</strong> → Tautkan perangkat</li>
+              <li>Pindai kode di samping</li>
+            </ol>
+            <p class="muted small">
+              Kode berganti tiap ±20 detik dan halaman ini memperbaruinya
+              sendiri. Kalau gagal, tunggu kode berikutnya muncul.
+            </p>
+            <p class="warn small">
+              Gunakan nomor khusus, bukan nomor pribadi. Nomor yang memindai
+              inilah yang mengirim seluruh notifikasi dan kode login
+              pelanggan — kalau diblokir WhatsApp, pelanggan tidak bisa masuk
+              ke aplikasi sama sekali.
+            </p>
+          </div>
         </div>
 
         <!-- Instruksi pemulihan langsung di tempat masalahnya terlihat.
@@ -312,6 +353,31 @@ onUnmounted(() => clearInterval(refreshTimer));
 .recovery ol { margin: 0 0 12px; padding-left: 18px; font-size: 13px; line-height: 1.9; }
 
 .channels { display: flex; gap: 8px; margin-top: 12px; }
+
+.qr-box {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding: 16px;
+  background: var(--surface-2);
+  border-radius: var(--radius);
+}
+/* Latar putih tetap dipertahankan di mode gelap — pemindai QR membaca
+   kontras gelap-di-atas-terang, dan membalik warnanya membuat sebagian
+   HP gagal mengenali kode. */
+.qr-box img {
+  background: #fff;
+  padding: 8px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.qr-help { flex: 1; min-width: 240px; }
+.qr-help h3 { margin: 0 0 8px; }
+.qr-help ol { margin: 0 0 10px; padding-left: 18px; font-size: 13px; line-height: 1.9; }
+.qr-help p { margin: 6px 0 0; }
+.warn { color: var(--danger); }
 
 code {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
