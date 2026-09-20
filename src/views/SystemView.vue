@@ -38,6 +38,24 @@ async function load() {
   }
 }
 
+async function buatUlangQr() {
+  busy.value = 'qr';
+  notice.value = '';
+  error.value = '';
+  try {
+    const r = await api.post('/admin/system/whatsapp/refresh-qr');
+    notice.value = r.message;
+    // Worker memantau permintaan tiap 5 detik, lalu perlu beberapa detik
+    // lagi untuk menerbitkan QR. Jangan muat ulang seketika — layar akan
+    // menampilkan "menunggu kode" dan terlihat seperti gagal.
+    setTimeout(load, 6_000);
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    busy.value = null;
+  }
+}
+
 async function tesAlert() {
   busy.value = 'test';
   notice.value = '';
@@ -117,10 +135,12 @@ function levelClass(l) {
  */
 function jadwalkan() {
   clearTimeout(refreshTimer);
+  const menungguPairing = wa.value && !wa.value.status?.connected && !wa.value.status?.banned;
+
   refreshTimer = setTimeout(async () => {
     await load();
     jadwalkan();
-  }, wa.value?.qr ? 5_000 : 30_000);
+  }, menungguPairing ? 3_000 : 30_000);
 }
 
 onMounted(async () => {
@@ -172,10 +192,16 @@ onUnmounted(() => clearTimeout(refreshTimer));
           {{ wa.reason }}
         </div>
 
-        <!-- QR pairing. Hanya muncul saat worker sedang menunggu dipindai;
-             hilang sendiri begitu tersambung. -->
-        <div v-if="wa.qr" class="qr-box">
-          <img :src="wa.qr.png" alt="QR pairing WhatsApp" width="260" height="260" />
+        <!-- Area pairing. Muncul selama WhatsApp belum tersambung —
+             termasuk saat QR sedang berganti, supaya tombol "Buat ulang"
+             tetap terjangkau dan admin tidak kehilangan pijakan. -->
+        <div v-if="!wa.status?.connected && !wa.status?.banned" class="qr-box">
+          <img v-if="wa.qr" :src="wa.qr.png" alt="QR pairing WhatsApp" width="260" height="260" />
+          <div v-else class="qr-kosong">
+            <span class="spinner"></span>
+            <p class="muted small">Menunggu kode dari WhatsApp...</p>
+          </div>
+
           <div class="qr-help">
             <h3>Tautkan nomor WhatsApp</h3>
             <ol>
@@ -191,7 +217,16 @@ onUnmounted(() => clearTimeout(refreshTimer));
               Gunakan nomor khusus, bukan nomor pribadi. Nomor yang memindai
               inilah yang mengirim seluruh notifikasi dan kode login
               pelanggan — kalau diblokir WhatsApp, pelanggan tidak bisa masuk
-              ke aplikasi sama sekali.
+              ke aplikasi sama sekali. Nomor ini juga otomatis menjadi nomor
+              CS yang tertera di pesan dan aplikasi pelanggan.
+            </p>
+
+            <button class="ghost sm" :disabled="busy === 'qr'" @click="buatUlangQr">
+              <span v-if="busy === 'qr'" class="spinner"></span>
+              Buat ulang QR
+            </button>
+            <p class="muted small">
+              Tekan kalau HP menolak dengan "periksa koneksi internet telepon".
             </p>
           </div>
         </div>
@@ -373,7 +408,21 @@ onUnmounted(() => clearTimeout(refreshTimer));
   border-radius: 8px;
   flex-shrink: 0;
 }
+.qr-kosong {
+  width: 276px;
+  height: 276px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
 .qr-help { flex: 1; min-width: 240px; }
+.qr-help button { margin-top: 12px; }
 .qr-help h3 { margin: 0 0 8px; }
 .qr-help ol { margin: 0 0 10px; padding-left: 18px; font-size: 13px; line-height: 1.9; }
 .qr-help p { margin: 6px 0 0; }
